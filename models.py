@@ -90,6 +90,7 @@ class Post(db.Model):
             'id': self.id,
             'user_id': self.user_id,
             'uploaded_by': self.uploaded_by,
+            'image_path': self.image_path,
             'image_url': full_image_url,
             'lat': float(self.latitude),
             'long': float(self.longitude),
