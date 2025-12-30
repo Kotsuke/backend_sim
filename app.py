@@ -261,7 +261,23 @@ def verify_post(current_user, post_id):
         ))
 
     db.session.commit()
-    return jsonify({'message': 'Verifikasi disimpan'})
+
+    # --- UPDATE POLLING COUNTS ---
+    # Hitung ulang jumlah vote agar data di tabel Post selalu update
+    c_count = PostVerification.query.filter_by(post_id=post_id, verification_type=VerificationType.CONFIRM).count()
+    f_count = PostVerification.query.filter_by(post_id=post_id, verification_type=VerificationType.FALSE).count()
+
+    post.confirm_count = c_count
+    post.false_count = f_count
+    db.session.commit()
+
+    return jsonify({
+        'message': 'Verifikasi disimpan',
+        'data': {
+            'valid': c_count,
+            'false': f_count
+        }
+    })
 
 # =========================
 # STATIC FILE
