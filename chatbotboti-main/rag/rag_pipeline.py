@@ -5,7 +5,10 @@ from pathlib import Path
 from sentence_transformers import SentenceTransformer
 from groq import Groq
 
+from dotenv import load_dotenv
+
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
 
 
 class RAGPipeline:
@@ -29,8 +32,10 @@ class RAGPipeline:
             self.chunks = json.load(f)
 
         # ===== LLM : GROQ API =====
-        # Pastikan API KEY sudah diset di environment variable atau hardcode sementara
-        api_key = os.environ.get("GROQ_API_KEY", "gsk_...") 
+        # Ambil dari environment variable (aman untuk di-push)
+        api_key = os.environ.get("GROQ_API_KEY")
+        if not api_key:
+            print("⚠️ WARNING: GROQ_API_KEY belum diset di file .env!") 
         self.client = Groq(api_key=api_key)
 
     # ===== RETRIEVE =====
@@ -49,7 +54,7 @@ class RAGPipeline:
                         "content": prompt,
                     }
                 ],
-                model="llama3-8b-8192",
+                model="llama-3.3-70b-versatile",
                 temperature=0.5,
                 max_tokens=300,
             )
