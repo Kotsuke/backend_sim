@@ -13,6 +13,24 @@ from inference_sdk import InferenceHTTPClient
 
 from config import Config
 from models import db, Post, PostVerification, User, UserRole, VerificationType
+import sys
+
+# =========================
+# CHATBOT SETUP
+# =========================
+# Tambahkan folder chatbotboti-main ke path agar bisa import module-nya
+sys.path.append(os.path.join(os.path.dirname(__file__), 'chatbotboti-main'))
+
+chatbot = None
+try:
+    from chatbot_model import SIMChatbot
+    # Inisialisasi chatbot (load model mungkin butuh waktu & RAM)
+    # Gunakan try-except agar app tetap jalan meski model belum ada
+    chatbot = SIMChatbot()
+    print("✅ Chatbot loaded successfully")
+except Exception as e:
+    print(f"⚠️ Chatbot failed to load: {e}")
+    chatbot = None
 
 # =========================
 # APP INIT
@@ -278,6 +296,29 @@ def verify_post(current_user, post_id):
             'false': f_count
         }
     })
+
+# =========================
+# CHATBOT ROUTE
+# =========================
+@app.route('/api/chat', methods=['POST'])
+@token_required
+def chat_with_bot(current_user):
+    if not chatbot:
+        return jsonify({'error': 'Chatbot sedang tidak aktif (Model belum dimuat)'}), 503
+
+    data = request.json
+    question = data.get('message')
+
+    if not question:
+        return jsonify({'error': 'Pesan (message) wajib diisi'}), 400
+
+    try:
+        # Panggil fungsi chat dari SIMChatbot
+        answer = chatbot.chat(question)
+        return jsonify({'answer': answer})
+    except Exception as e:
+        print(f"Chat Error: {e}")
+        return jsonify({'error': 'Terjadi kesalahan pada chatbot'}), 500
 
 # =========================
 # STATIC FILE

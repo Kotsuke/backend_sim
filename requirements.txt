@@ -1,0 +1,13 @@
+Flask
+Flask-Cors
+Flask-SQLAlchemy
+PyJWT
+Werkzeug
+opencv-python-headless
+numpy
+inference-sdk
+python-docx
+sentence-transformers
+faiss-cpu
+pypdf
+llama-cpp-python
