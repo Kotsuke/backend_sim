@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.vscode/
+
+models/llm/*.gguf
+models/embedding/
+
+data/processed/
+venv/
