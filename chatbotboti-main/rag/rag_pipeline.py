@@ -1,15 +1,16 @@
 import json
 import faiss
+import os
 from pathlib import Path
 from sentence_transformers import SentenceTransformer
-from llama_cpp import Llama
+from groq import Groq
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 class RAGPipeline:
     def __init__(self):
-        # ===== EMBEDDING =====
+        # ===== EMBEDDING (Tetap Local - Ringan) =====
         self.embedder = SentenceTransformer(
             "all-MiniLM-L6-v2",
             cache_folder=str(BASE_DIR / "models" / "embedding")
@@ -27,15 +28,10 @@ class RAGPipeline:
         ) as f:
             self.chunks = json.load(f)
 
-        # ===== LLM : MISTRAL =====
-        self.llm = Llama(
-            model_path=str(
-                BASE_DIR / "models" / "llm" / "mistral-7b-instruct-v0.2.Q4_K_M.gguf"
-            ),
-            n_ctx=4096,
-            n_threads=8,
-            verbose=False
-        )
+        # ===== LLM : GROQ API =====
+        # Pastikan API KEY sudah diset di environment variable atau hardcode sementara
+        api_key = os.environ.get("GROQ_API_KEY", "gsk_...") 
+        self.client = Groq(api_key=api_key)
 
     # ===== RETRIEVE =====
     def retrieve(self, query, k=3):
@@ -45,15 +41,18 @@ class RAGPipeline:
 
     # ===== GENERATE =====
     def generate(self, prompt):
-        output = self.llm(
-            prompt,
-            max_tokens=200,
-            temperature=0.2,
-            top_p=0.9,
-            repeat_penalty=1.1
-        )
-
-        text = output["choices"][0]["text"].strip()
-        if not text:
-            return "Maaf, sistem tidak menghasilkan jawaban."
-        return text
+        try:
+            chat_completion = self.client.chat.completions.create(
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt,
+                    }
+                ],
+                model="llama3-8b-8192",
+                temperature=0.5,
+                max_tokens=300,
+            )
+            return chat_completion.choices[0].message.content
+        except Exception as e:
+            return f"Maaf, terjadi kesalahan koneksi ke AI: {str(e)}"
