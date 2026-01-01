@@ -1,8 +1,13 @@
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
+from datetime import datetime, timezone
 from werkzeug.security import generate_password_hash, check_password_hash
 import enum
 from sqlalchemy import Enum, UniqueConstraint
+
+
+# Helper function untuk mendapatkan waktu UTC saat ini (timezone-aware)
+def utc_now():
+    return datetime.now(timezone.utc)
 
 db = SQLAlchemy()
 
@@ -76,7 +81,7 @@ class Post(db.Model):
     confirm_count = db.Column(db.Integer, default=0) 
     false_count = db.Column(db.Integer, default=0)   
     
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime(timezone=True), default=utc_now)
 
     @property
     def uploaded_by(self):
@@ -90,7 +95,6 @@ class Post(db.Model):
             'id': self.id,
             'user_id': self.user_id,
             'uploaded_by': self.uploaded_by,
-            'image_path': self.image_path,
             'image_url': full_image_url,
             'lat': float(self.latitude),
             'long': float(self.longitude),
@@ -115,6 +119,6 @@ class PostVerification(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     
     verification_type = db.Column(Enum(VerificationType), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime(timezone=True), default=utc_now)
 
     __table_args__ = (UniqueConstraint('post_id', 'user_id', name='unique_user_verification'),)

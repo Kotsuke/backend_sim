@@ -6,7 +6,7 @@ import jwt
 from flask import Flask, request, jsonify, send_from_directory
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from flask_cors import CORS
 from inference_sdk import InferenceHTTPClient
@@ -152,7 +152,7 @@ def login():
     token = jwt.encode({
         'user_id': user.id,
         'role': user.role.value,
-        'exp': datetime.utcnow() + timedelta(hours=6)
+        'exp': datetime.now(timezone.utc) + timedelta(hours=6)
     }, app.config['SECRET_KEY'], algorithm='HS256')
 
     return jsonify({
@@ -222,7 +222,7 @@ def google_login():
     token = jwt.encode({
         'user_id': user.id,
         'role': user.role.value,
-        'exp': datetime.utcnow() + timedelta(hours=6)
+        'exp': datetime.now(timezone.utc) + timedelta(hours=6)
     }, app.config['SECRET_KEY'], algorithm='HS256')
 
     return jsonify({
