@@ -368,6 +368,55 @@ def verify_post(current_user, post_id):
     })
 
 # =========================
+# ADMIN ENDPOINTS
+# =========================
+@app.route('/api/dashboard/stats', methods=['GET'])
+def get_dashboard_stats():
+    """Statistik untuk dashboard admin"""
+    total_posts = Post.query.count()
+    total_users = User.query.count()
+    serious_damage = Post.query.filter_by(severity='SERIUS').count()
+    
+    return jsonify({
+        'total_posts': total_posts,
+        'total_users': total_users,
+        'serious_damage': serious_damage
+    })
+
+
+@app.route('/api/users', methods=['GET'])
+def get_all_users():
+    """Daftar semua user untuk admin"""
+    users = User.query.all()
+    return jsonify([u.to_dict() for u in users])
+
+
+@app.route('/api/posts/<int:post_id>', methods=['DELETE'])
+@token_required
+def delete_post(current_user, post_id):
+    """Hapus post (hanya admin atau pemilik post)"""
+    post = Post.query.get_or_404(post_id)
+    
+    # Cek apakah admin atau pemilik post
+    if current_user.role != UserRole.ADMIN and current_user.id != post.user_id:
+        return jsonify({'error': 'Akses ditolak'}), 403
+    
+    # Hapus verifikasi terkait post ini dulu
+    PostVerification.query.filter_by(post_id=post_id).delete()
+    
+    # Hapus file gambar jika ada
+    import os
+    image_path = os.path.join(app.config['UPLOAD_FOLDER'], post.image_path)
+    if os.path.exists(image_path):
+        os.remove(image_path)
+    
+    db.session.delete(post)
+    db.session.commit()
+    
+    return jsonify({'message': 'Laporan berhasil dihapus'})
+
+
+# =========================
 # CHATBOT ROUTE
 # =========================
 @app.route('/api/chat', methods=['POST'])
