@@ -391,6 +391,50 @@ def get_all_users():
     return jsonify([u.to_dict() for u in users])
 
 
+@app.route('/api/admin/users', methods=['POST'])
+@token_required
+def admin_create_user(current_user):
+    """Admin dapat membuat akun user baru"""
+    # Pastikan yang mengakses adalah admin
+    if current_user.role != UserRole.ADMIN:
+        return jsonify({'error': 'Akses ditolak. Hanya admin yang bisa membuat user.'}), 403
+    
+    data = request.json
+    
+    # Validasi data wajib
+    if not all(k in data for k in ('username', 'email', 'password', 'full_name')):
+        return jsonify({'error': 'Data tidak lengkap. Username, email, password, dan nama lengkap wajib diisi.'}), 400
+    
+    # Cek apakah username atau email sudah dipakai
+    if User.query.filter(
+        (User.username == data['username']) |
+        (User.email == data['email'])
+    ).first():
+        return jsonify({'error': 'Username atau Email sudah terpakai'}), 400
+    
+    # Buat user baru
+    user = User(
+        username=data['username'],
+        email=data['email'],
+        full_name=data['full_name'],
+        phone=data.get('phone', ''),
+        bio=data.get('bio', 'Dibuat oleh Admin'),
+        points=int(data.get('points', 0))
+    )
+    user.set_password(data['password'])
+    
+    # Set role jika dikirim
+    if data.get('role') == 'admin':
+        user.role = UserRole.ADMIN
+    else:
+        user.role = UserRole.USER
+    
+    db.session.add(user)
+    db.session.commit()
+    
+    return jsonify({'message': 'User berhasil dibuat', 'user': user.to_dict()}), 201
+
+
 @app.route('/api/posts/<int:post_id>', methods=['DELETE'])
 @token_required
 def delete_post(current_user, post_id):
@@ -414,6 +458,52 @@ def delete_post(current_user, post_id):
     db.session.commit()
     
     return jsonify({'message': 'Laporan berhasil dihapus'})
+
+
+@app.route('/api/admin/users/<int:user_id>', methods=['PUT'])
+@token_required
+def admin_update_user(current_user, user_id):
+    """Admin dapat mengedit data user manapun"""
+    # Pastikan yang mengakses adalah admin
+    if current_user.role != UserRole.ADMIN:
+        return jsonify({'error': 'Akses ditolak. Hanya admin yang bisa edit user.'}), 403
+    
+    user = User.query.get_or_404(user_id)
+    data = request.json
+    
+    # Update field yang dikirim
+    if 'full_name' in data:
+        user.full_name = data['full_name']
+    if 'email' in data:
+        # Cek apakah email sudah dipakai user lain
+        existing = User.query.filter(User.email == data['email'], User.id != user_id).first()
+        if existing:
+            return jsonify({'error': 'Email sudah digunakan user lain'}), 400
+        user.email = data['email']
+    if 'username' in data:
+        # Cek apakah username sudah dipakai user lain
+        existing = User.query.filter(User.username == data['username'], User.id != user_id).first()
+        if existing:
+            return jsonify({'error': 'Username sudah digunakan user lain'}), 400
+        user.username = data['username']
+    if 'phone' in data:
+        user.phone = data['phone']
+    if 'bio' in data:
+        user.bio = data['bio']
+    if 'role' in data:
+        # Update role (admin/user)
+        if data['role'] == 'admin':
+            user.role = UserRole.ADMIN
+        else:
+            user.role = UserRole.USER
+    if 'password' in data and data['password']:
+        # Update password jika dikirim
+        user.set_password(data['password'])
+    if 'points' in data:
+        user.points = int(data['points'])
+    
+    db.session.commit()
+    return jsonify({'message': 'User berhasil diperbarui', 'user': user.to_dict()})
 
 
 # =========================
