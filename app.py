@@ -12,7 +12,7 @@ from flask_cors import CORS
 from inference_sdk import InferenceHTTPClient
 
 from config import Config
-from models import db, Post, PostVerification, User, UserRole, VerificationType
+from models import db, Post, PostVerification, User, UserRole, VerificationType, Review
 import sys
 
 # =========================
@@ -528,6 +528,47 @@ def chat_with_bot(current_user):
     except Exception as e:
         print(f"Chat Error: {e}")
         return jsonify({'error': 'Terjadi kesalahan pada chatbot'}), 500
+
+# =========================
+# REVIEWS
+# =========================
+@app.route('/api/reviews', methods=['POST'])
+@token_required
+def create_review(current_user):
+    data = request.json
+    rating = data.get('rating')
+    comment = data.get('comment')
+
+    if not rating or not isinstance(rating, int) or not (1 <= rating <= 5):
+        return jsonify({'error': 'Rating harus berupa angka 1-5'}), 400
+
+    review = Review(
+        user_id=current_user.id,
+        rating=rating,
+        comment=comment
+    )
+    db.session.add(review)
+    db.session.commit()
+
+    return jsonify({'message': 'Review berhasil dikirim', 'data': review.to_dict()}), 201
+
+@app.route('/api/reviews', methods=['GET'])
+def get_reviews():
+    # Bisa diakses publik atau admin saja, user minta "web admin untuk menganalisa"
+    # Kita buat return all saja.
+    reviews = Review.query.order_by(Review.created_at.desc()).all()
+    return jsonify([r.to_dict() for r in reviews])
+
+@app.route('/api/reviews/<int:review_id>', methods=['DELETE'])
+@token_required
+def delete_review(current_user, review_id):
+    if current_user.role != UserRole.ADMIN:
+        return jsonify({'error': 'Akses ditolak'}), 403
+
+    review = Review.query.get_or_404(review_id)
+    db.session.delete(review)
+    db.session.commit()
+    return jsonify({'message': 'Review berhasil dihapus'})
 
 # =========================
 # STATIC FILE

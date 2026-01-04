@@ -16,6 +16,29 @@ class UserRole(enum.Enum):
     USER = 'user'
     ADMIN = 'admin'
 
+# --- MODEL REVIEW ---
+class Review(db.Model):
+    __tablename__ = 'reviews'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    rating = db.Column(db.Integer, nullable=False)  # 1-5 bintang
+    comment = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), default=utc_now)
+
+    user = db.relationship('User', backref=db.backref('reviews', lazy=True))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'username': self.user.username if self.user else "Unknown",
+            'full_name': self.user.full_name if self.user else "Unknown",
+            'rating': self.rating,
+            'comment': self.comment,
+            'created_at': self.created_at.strftime('%Y-%m-%d %H:%M')
+        }
+
 # 2. Tipe Verifikasi Komunitas (PENGGANTI STATUS)
 # User cuma bisa milih: "Valid nih!" atau "Enggak kok/Udah bener"
 class VerificationType(enum.Enum):
