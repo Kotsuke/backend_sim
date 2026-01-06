@@ -270,6 +270,13 @@ def update_profile(current_user, user_id):
     if 'full_name' in data: current_user.full_name = data['full_name']
     if 'phone' in data: current_user.phone = data['phone']
     if 'bio' in data: current_user.bio = data['bio']
+    
+    # Update password jika dikirim dan tidak kosong
+    if 'password' in data and data['password']:
+        if len(data['password']) >= 6:
+            current_user.set_password(data['password'])
+        else:
+            return jsonify({'error': 'Password minimal 6 karakter'}), 400
 
     db.session.commit()
     return jsonify({'message': 'Profil diperbarui', 'user': current_user.to_dict()})
