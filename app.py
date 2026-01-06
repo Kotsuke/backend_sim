@@ -92,7 +92,14 @@ def token_required(f):
 # HELPER AI
 # =========================
 def analyze_severity(results, img_w, img_h):
-    preds = results.get('predictions', [])
+    # Ambil prediksi dari Roboflow
+    raw_preds = results.get('predictions', [])
+    
+    # 1. FILTER CONFIDENCE
+    # Hanya ambil prediksi yang confidence-nya > 40% (0.4)
+    # Ini membantu membuang deteksi "sampah" atau noise
+    preds = [p for p in raw_preds if p.get('confidence', 0) > 0.4]
+    
     count = len(preds)
 
     if count == 0:
@@ -103,11 +110,24 @@ def analyze_severity(results, img_w, img_h):
 
     for p in preds:
         box = p.get('width', 0) * p.get('height', 0)
-        if (box / img_area) > 0.02:
+        ratio = box / img_area
+        
+        # 2. LOGIKA UKURAN (AREA)
+        # Sebelumnya 0.02 (2%), sekarang dinaikkan ke 0.035 (3.5%)
+        # Agar jika user foto agak dekat, retakan kecil tidak langsung dianggap SERIUS
+        if ratio > 0.035:
             serious = True
             break
 
-    status = "SERIUS" if (count > 3 or serious) else "TIDAK_SERIUS"
+    # 3. LOGIKA JUMLAH
+    # Sebelumnya > 3, sekarang > 4.
+    # Jika ada lebih dari 4 lubang kecil-kecil -> SERIUS (Jalan Hancur)
+    # ATAU jika ada 1 lubang besar (serious=True) -> SERIUS
+    if count > 4 or serious:
+        status = "SERIUS"
+    else:
+        status = "TIDAK_SERIUS"
+
     return status, count
 
 # =========================
