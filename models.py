@@ -59,6 +59,7 @@ class User(db.Model):
     phone = db.Column(db.String(20), nullable=True)
     bio = db.Column(db.Text, nullable=True)
     points = db.Column(db.Integer, default=0) 
+    created_at = db.Column(db.DateTime(timezone=True), default=utc_now) 
 
     role = db.Column(Enum(UserRole), default=UserRole.USER, nullable=False)
     

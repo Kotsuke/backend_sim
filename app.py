@@ -404,11 +404,55 @@ def get_dashboard_stats():
     total_users = User.query.count()
     serious_damage = Post.query.filter_by(severity='SERIUS').count()
     
+    # Hitung ulasan rata-rata
+    from sqlalchemy import func
+    avg_rating = db.session.query(func.avg(Review.rating)).scalar()
+    avg_rating = round(avg_rating, 1) if avg_rating else 0.0
+
     return jsonify({
         'total_posts': total_posts,
         'total_users': total_users,
-        'serious_damage': serious_damage
+        'serious_damage': serious_damage,
+        'average_rating': avg_rating
     })
+
+
+@app.route('/api/dashboard/growth', methods=['GET'])
+def get_growth_stats():
+    """Mengembalikan data timestamp untuk grafik pertumbuhan"""
+    # Ambil semua tanggal pembuatan user dan post
+    # Kita kirim raw data tanggal agar frontend yang mengolah (grouping daily, weekly, etc)
+    # Ini lebih fleksibel daripada grouping di backend
+    
+    users = db.session.query(User.created_at).all()
+    posts = db.session.query(Post.created_at).all()
+    
+    # Convert ke list string ISO format
+    user_dates = [u.created_at.isoformat() for u in users if u.created_at]
+    post_dates = [p.created_at.isoformat() for p in posts if p.created_at]
+    
+    return jsonify({
+        'users': user_dates,
+        'posts': post_dates
+    })
+
+def check_and_migrate_db():
+    """Cek dan update schema database jika diperlukan"""
+    from sqlalchemy import text, inspect
+    
+    with app.app_context():
+        inspector = inspect(db.engine)
+        columns = [c['name'] for c in inspector.get_columns('users')]
+        
+        if 'created_at' not in columns:
+            print("⚠️ Column 'created_at' missing in 'users', migrating...")
+            try:
+                # Syntax MySQL
+                db.session.execute(text("ALTER TABLE users ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP"))
+                db.session.commit()
+                print("✅ Migration successful: Added 'created_at' to 'users'")
+            except Exception as e:
+                print(f"❌ Migration failed: {e}")
 
 
 @app.route('/api/users', methods=['GET'])
@@ -608,4 +652,5 @@ def uploaded_file(filename):
 # RUN
 # =========================
 if __name__ == '__main__':
+    check_and_migrate_db()
     app.run(host='0.0.0.0', port=5000, debug=True)
