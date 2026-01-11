@@ -641,6 +641,22 @@ def create_review(current_user):
 @app.route('/api/reviews', methods=['GET'])
 def get_reviews():
     reviews = Review.query.order_by(Review.created_at.desc()).all()
+    
+    # Lazy Analysis: Analisis sentimen untuk review yang belum punya label
+    updated = False
+    for r in reviews:
+        if r.comment and r.sentiment is None:
+            try:
+                sentiment = predict_sentiment(r.comment)
+                if sentiment:
+                    r.sentiment = sentiment
+                    updated = True
+            except Exception as e:
+                print(f"⚠️ Failed to analyze review {r.id}: {e}")
+    
+    if updated:
+        db.session.commit()
+    
     return jsonify([r.to_dict() for r in reviews])
 
 @app.route('/api/reviews/<int:review_id>', methods=['DELETE'])
