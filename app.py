@@ -293,8 +293,21 @@ def delete_user(current_user, user_id):
     if current_user.role != UserRole.ADMIN and current_user.id != user_id:
         return jsonify({'error': 'Akses ditolak'}), 403
 
+    # Cleanup data user manual (untuk safety jika cascade gagal/tidak kena)
     PostVerification.query.filter_by(user_id=user_id).delete()
+    
+    # Hapus file gambar post user ini
+    user_posts = Post.query.filter_by(user_id=user_id).all()
+    for p in user_posts:
+        if os.path.exists(os.path.join(app.config['UPLOAD_FOLDER'], p.image_path)):
+            try:
+                os.remove(os.path.join(app.config['UPLOAD_FOLDER'], p.image_path))
+            except:
+                pass
+    
     Post.query.filter_by(user_id=user_id).delete()
+    Review.query.filter_by(user_id=user_id).delete() # Tambahan cleanup review
+    
     db.session.delete(current_user)
     db.session.commit()
 
@@ -567,7 +580,7 @@ def admin_update_user(current_user, user_id):
     db.session.commit()
     return jsonify({'message': 'User berhasil diperbarui', 'user': user.to_dict()})
 
-# =========================
+ =========================
 # CHATBOT ROUTE
 # =========================
 @app.route('/api/chat', methods=['POST'])
@@ -589,7 +602,7 @@ def chat_with_bot(current_user):
     except Exception as e:
         print(f"Chat Error: {e}")
         return jsonify({'error': 'Terjadi kesalahan pada chatbot'}), 500
-
+        
 # =========================
 # REVIEWS
 # =========================

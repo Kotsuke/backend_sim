@@ -65,8 +65,13 @@ class User(db.Model):
 
     role = db.Column(Enum(UserRole), default=UserRole.USER, nullable=False)
     
-    posts = db.relationship('Post', backref='author', lazy=True)
-    verifications = db.relationship('PostVerification', backref='user', lazy=True)
+    # Cascade delete: Jika user dihapus, post & verifikasi & review ikut terhapus
+    posts = db.relationship('Post', backref='author', lazy=True, cascade="all, delete-orphan")
+    verifications = db.relationship('PostVerification', backref='user', lazy=True, cascade="all, delete-orphan")
+    # review relationship is defined via backref in Review model as 'reviews'.
+    # To handle cascade for reviews properly if defined there, we might need to update Review model
+    # OR we can delete them manually in delete_user.
+    # But let's fix posts/verifications first which caused the error.
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
