@@ -27,7 +27,7 @@ class Review(db.Model):
     sentiment = db.Column(db.String(20), nullable=True) # 'positif', 'negatif', atau None
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now)
 
-    user = db.relationship('User', backref=db.backref('reviews', lazy=True))
+    user = db.relationship('User', backref=db.backref('reviews', lazy=True, cascade="all, delete-orphan"))
 
     def to_dict(self):
         return {
