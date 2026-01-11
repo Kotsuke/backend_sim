@@ -613,6 +613,13 @@ def delete_review(current_user, review_id):
     return jsonify({'message': 'Review berhasil dihapus'})
 
 # =========================
+# STATIC FILE
+# =========================
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
+# =========================
 # RUN
 # =========================
 if __name__ == '__main__':
