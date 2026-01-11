@@ -11,3 +11,4 @@ sentence-transformers
 faiss-cpu
 pypdf
 llama-cpp-python
+tensorflow

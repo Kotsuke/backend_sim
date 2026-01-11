@@ -402,6 +402,14 @@ def verify_post(current_user, post_id):
 # =========================
 # ADMIN ENDPOINTS
 # =========================
+# ... (imports)
+from sentiment_service import init_analyzer, predict_sentiment
+
+# ... (existing code)
+
+# =========================
+# ADMIN ENDPOINTS
+# =========================
 @app.route('/api/dashboard/stats', methods=['GET'])
 def get_dashboard_stats():
     """Statistik untuk dashboard admin"""
@@ -414,32 +422,22 @@ def get_dashboard_stats():
     avg_rating = db.session.query(func.avg(Review.rating)).scalar()
     avg_rating = round(avg_rating, 1) if avg_rating else 0.0
 
+    # Hitung Sentimen
+    positive_reviews = Review.query.filter_by(sentiment='positif').count()
+    negative_reviews = Review.query.filter_by(sentiment='negatif').count()
+
     return jsonify({
         'total_posts': total_posts,
         'total_users': total_users,
         'serious_damage': serious_damage,
-        'average_rating': avg_rating
+        'average_rating': avg_rating,
+        'sentiment': {
+            'positive': positive_reviews,
+            'negative': negative_reviews
+        }
     })
 
-
-@app.route('/api/dashboard/growth', methods=['GET'])
-def get_growth_stats():
-    """Mengembalikan data timestamp untuk grafik pertumbuhan"""
-    # Ambil semua tanggal pembuatan user dan post
-    # Kita kirim raw data tanggal agar frontend yang mengolah (grouping daily, weekly, etc)
-    # Ini lebih fleksibel daripada grouping di backend
-    
-    users = db.session.query(User.created_at).all()
-    posts = db.session.query(Post.created_at).all()
-    
-    # Convert ke list string ISO format
-    user_dates = [u.created_at.isoformat() for u in users if u.created_at]
-    post_dates = [p.created_at.isoformat() for p in posts if p.created_at]
-    
-    return jsonify({
-        'users': user_dates,
-        'posts': post_dates
-    })
+# ... (existing growth stats)
 
 def check_and_migrate_db():
     """Cek dan update schema database jika diperlukan"""
@@ -447,163 +445,31 @@ def check_and_migrate_db():
     
     with app.app_context():
         inspector = inspect(db.engine)
-        columns = [c['name'] for c in inspector.get_columns('users')]
         
-        if 'created_at' not in columns:
+        # 1. Cek users.created_at
+        user_cols = [c['name'] for c in inspector.get_columns('users')]
+        if 'created_at' not in user_cols:
             print("⚠️ Column 'created_at' missing in 'users', migrating...")
             try:
-                # Syntax MySQL
                 db.session.execute(text("ALTER TABLE users ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP"))
                 db.session.commit()
-                print("✅ Migration successful: Added 'created_at' to 'users'")
+                print("✅ Migration: Added 'created_at' to 'users'")
             except Exception as e:
                 print(f"❌ Migration failed: {e}")
 
+        # 2. Cek reviews.sentiment
+        if 'reviews' in inspector.get_table_names():
+            review_cols = [c['name'] for c in inspector.get_columns('reviews')]
+            if 'sentiment' not in review_cols:
+                print("⚠️ Column 'sentiment' missing in 'reviews', migrating...")
+                try:
+                    db.session.execute(text("ALTER TABLE reviews ADD COLUMN sentiment VARCHAR(20)"))
+                    db.session.commit()
+                    print("✅ Migration: Added 'sentiment' to 'reviews'")
+                except Exception as e:
+                    print(f"❌ Migration failed: {e}")
 
-@app.route('/api/users', methods=['GET'])
-def get_all_users():
-    """Daftar semua user untuk admin"""
-    users = User.query.all()
-    return jsonify([u.to_dict() for u in users])
-
-
-@app.route('/api/admin/users', methods=['POST'])
-@token_required
-def admin_create_user(current_user):
-    """Admin dapat membuat akun user baru"""
-    # Pastikan yang mengakses adalah admin
-    if current_user.role != UserRole.ADMIN:
-        return jsonify({'error': 'Akses ditolak. Hanya admin yang bisa membuat user.'}), 403
-    
-    data = request.json
-    
-    # Validasi data wajib
-    if not all(k in data for k in ('username', 'email', 'password', 'full_name')):
-        return jsonify({'error': 'Data tidak lengkap. Username, email, password, dan nama lengkap wajib diisi.'}), 400
-    
-    # Cek apakah username atau email sudah dipakai
-    if User.query.filter(
-        (User.username == data['username']) |
-        (User.email == data['email'])
-    ).first():
-        return jsonify({'error': 'Username atau Email sudah terpakai'}), 400
-    
-    # Buat user baru
-    user = User(
-        username=data['username'],
-        email=data['email'],
-        full_name=data['full_name'],
-        phone=data.get('phone', ''),
-        bio=data.get('bio', 'Dibuat oleh Admin'),
-        points=int(data.get('points', 0))
-    )
-    user.set_password(data['password'])
-    
-    # Set role jika dikirim
-    if data.get('role') == 'admin':
-        user.role = UserRole.ADMIN
-    else:
-        user.role = UserRole.USER
-    
-    db.session.add(user)
-    db.session.commit()
-    
-    return jsonify({'message': 'User berhasil dibuat', 'user': user.to_dict()}), 201
-
-
-@app.route('/api/posts/<int:post_id>', methods=['DELETE'])
-@token_required
-def delete_post(current_user, post_id):
-    """Hapus post (hanya admin atau pemilik post)"""
-    post = Post.query.get_or_404(post_id)
-    
-    # Cek apakah admin atau pemilik post
-    if current_user.role != UserRole.ADMIN and current_user.id != post.user_id:
-        return jsonify({'error': 'Akses ditolak'}), 403
-    
-    # Hapus verifikasi terkait post ini dulu
-    PostVerification.query.filter_by(post_id=post_id).delete()
-    
-    # Hapus file gambar jika ada
-    import os
-    image_path = os.path.join(app.config['UPLOAD_FOLDER'], post.image_path)
-    if os.path.exists(image_path):
-        os.remove(image_path)
-    
-    db.session.delete(post)
-    db.session.commit()
-    
-    return jsonify({'message': 'Laporan berhasil dihapus'})
-
-
-@app.route('/api/admin/users/<int:user_id>', methods=['PUT'])
-@token_required
-def admin_update_user(current_user, user_id):
-    """Admin dapat mengedit data user manapun"""
-    # Pastikan yang mengakses adalah admin
-    if current_user.role != UserRole.ADMIN:
-        return jsonify({'error': 'Akses ditolak. Hanya admin yang bisa edit user.'}), 403
-    
-    user = User.query.get_or_404(user_id)
-    data = request.json
-    
-    # Update field yang dikirim
-    if 'full_name' in data:
-        user.full_name = data['full_name']
-    if 'email' in data:
-        # Cek apakah email sudah dipakai user lain
-        existing = User.query.filter(User.email == data['email'], User.id != user_id).first()
-        if existing:
-            return jsonify({'error': 'Email sudah digunakan user lain'}), 400
-        user.email = data['email']
-    if 'username' in data:
-        # Cek apakah username sudah dipakai user lain
-        existing = User.query.filter(User.username == data['username'], User.id != user_id).first()
-        if existing:
-            return jsonify({'error': 'Username sudah digunakan user lain'}), 400
-        user.username = data['username']
-    if 'phone' in data:
-        user.phone = data['phone']
-    if 'bio' in data:
-        user.bio = data['bio']
-    if 'role' in data:
-        # Update role (admin/user)
-        if data['role'] == 'admin':
-            user.role = UserRole.ADMIN
-        else:
-            user.role = UserRole.USER
-    if 'password' in data and data['password']:
-        # Update password jika dikirim
-        user.set_password(data['password'])
-    if 'points' in data:
-        user.points = int(data['points'])
-    
-    db.session.commit()
-    return jsonify({'message': 'User berhasil diperbarui', 'user': user.to_dict()})
-
-
-# =========================
-# CHATBOT ROUTE
-# =========================
-@app.route('/api/chat', methods=['POST'])
-@token_required
-def chat_with_bot(current_user):
-    if not chatbot:
-        return jsonify({'error': 'Chatbot sedang tidak aktif (Model belum dimuat)'}), 503
-
-    data = request.json
-    question = data.get('message')
-
-    if not question:
-        return jsonify({'error': 'Pesan (message) wajib diisi'}), 400
-
-    try:
-        # Panggil fungsi chat dari SIMChatbot
-        answer = chatbot.chat(question)
-        return jsonify({'answer': answer})
-    except Exception as e:
-        print(f"Chat Error: {e}")
-        return jsonify({'error': 'Terjadi kesalahan pada chatbot'}), 500
+# ... (existing user endpoints)
 
 # =========================
 # REVIEWS
@@ -618,44 +484,31 @@ def create_review(current_user):
     if not rating or not isinstance(rating, int) or not (1 <= rating <= 5):
         return jsonify({'error': 'Rating harus berupa angka 1-5'}), 400
 
+    # Analisis Sentimen Otomatis
+    sentiment = None
+    if comment:
+        sentiment = predict_sentiment(comment)
+
     review = Review(
         user_id=current_user.id,
         rating=rating,
-        comment=comment
+        comment=comment,
+        sentiment=sentiment
     )
     db.session.add(review)
     db.session.commit()
 
     return jsonify({'message': 'Review berhasil dikirim', 'data': review.to_dict()}), 201
 
-@app.route('/api/reviews', methods=['GET'])
-def get_reviews():
-    # Bisa diakses publik atau admin saja, user minta "web admin untuk menganalisa"
-    # Kita buat return all saja.
-    reviews = Review.query.order_by(Review.created_at.desc()).all()
-    return jsonify([r.to_dict() for r in reviews])
-
-@app.route('/api/reviews/<int:review_id>', methods=['DELETE'])
-@token_required
-def delete_review(current_user, review_id):
-    if current_user.role != UserRole.ADMIN:
-        return jsonify({'error': 'Akses ditolak'}), 403
-
-    review = Review.query.get_or_404(review_id)
-    db.session.delete(review)
-    db.session.commit()
-    return jsonify({'message': 'Review berhasil dihapus'})
-
-# =========================
-# STATIC FILE
-# =========================
-@app.route('/uploads/<filename>')
-def uploaded_file(filename):
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+# ... (existing reviews methods)
 
 # =========================
 # RUN
 # =========================
 if __name__ == '__main__':
+    # Init Sentiment Analyzer
+    init_analyzer(app.config['BASE_DIR'])
+    
     check_and_migrate_db()
     app.run(host='0.0.0.0', port=5000, debug=True)
+

@@ -24,6 +24,7 @@ class Review(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     rating = db.Column(db.Integer, nullable=False)  # 1-5 bintang
     comment = db.Column(db.Text, nullable=True)
+    sentiment = db.Column(db.String(20), nullable=True) # 'positif', 'negatif', atau None
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now)
 
     user = db.relationship('User', backref=db.backref('reviews', lazy=True))
@@ -36,6 +37,7 @@ class Review(db.Model):
             'full_name': self.user.full_name if self.user else "Unknown",
             'rating': self.rating,
             'comment': self.comment,
+            'sentiment': self.sentiment,
             'created_at': self.created_at.strftime('%Y-%m-%d %H:%M')
         }
 
