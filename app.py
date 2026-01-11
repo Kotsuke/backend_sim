@@ -290,6 +290,10 @@ def update_profile(current_user, user_id):
 @app.route('/api/users/<int:user_id>', methods=['DELETE'])
 @token_required
 def delete_user(current_user, user_id):
+    # Proteksi: Admin tidak boleh menghapus dirinya sendiri
+    if current_user.id == user_id:
+        return jsonify({'error': 'Anda tidak dapat menghapus akun sendiri saat sedang login'}), 400
+
     if current_user.role != UserRole.ADMIN and current_user.id != user_id:
         return jsonify({'error': 'Akses ditolak'}), 403
 
@@ -580,7 +584,7 @@ def admin_update_user(current_user, user_id):
     db.session.commit()
     return jsonify({'message': 'User berhasil diperbarui', 'user': user.to_dict()})
 
- =========================
+## =========================
 # CHATBOT ROUTE
 # =========================
 @app.route('/api/chat', methods=['POST'])
