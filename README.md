@@ -68,10 +68,13 @@ Buat file bernama `.env` dan isi dengan konfigurasi berikut:
 # Konfigurasi Database (Jika ingin override config.py)
 DATABASE_URL=mysql+pymysql://root:@localhost/database_sim
 
-# API Key untuk Layanan AI / Chatbot (WAJIB DIISI agar Chatbot berfungsi)
+# API Key untuk Layanan AI Deteksi Jalan (Roboflow)
+# WAJIB DIISI! Jika kosong, fitur deteksi jalan tidak akan jalan
 ROBOFLOW_API_KEY=masukkan_api_key_roboflow_disini
+ROBOFLOW_MODEL_ID=pothole-detection-bqu6s-ztwh1/1 
+
+# API Key untuk Chatbot (Gemini / LLM Lain)
 GEMINI_API_KEY=masukkan_api_key_gemini_jika_pakai
-# Atau key lain sesuai provider LLM yang digunakan
 
 # Security
 SECRET_KEY=rahasia_negara_jangan_disebar

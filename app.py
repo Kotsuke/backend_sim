@@ -45,11 +45,16 @@ db.init_app(app)
 # =========================
 # ROBOFLOW CONFIG
 # =========================
+ROBOFLOW_API_KEY = os.environ.get("ROBOFLOW_API_KEY")
+MODEL_ID = os.environ.get("ROBOFLOW_MODEL_ID", "pothole-detection-bqu6s-ztwh1/1")
+
+if not ROBOFLOW_API_KEY:
+    print("⚠️ ROBOFLOW_API_KEY not found in environment variables. Post detection might fail.")
+
 CLIENT = InferenceHTTPClient(
     api_url="https://serverless.roboflow.com",
-    api_key="i4giE1h6TyTIijfwTuss"
+    api_key=ROBOFLOW_API_KEY
 )
-MODEL_ID = "pothole-detection-bqu6s-ztwh1/1"
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
