@@ -99,6 +99,9 @@ class Post(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     image_path = db.Column(db.String(255), nullable=False)
 
+    # Cascade delete: Jika post dihapus, verifikasi terkait ikut kehapus
+    verifications = db.relationship('PostVerification', backref='post_related', lazy=True, cascade="all, delete-orphan")
+
     latitude = db.Column(db.Numeric(10, 8), nullable=False)
     longitude = db.Column(db.Numeric(11, 8), nullable=False)
     address = db.Column(db.String(255), nullable=True)
