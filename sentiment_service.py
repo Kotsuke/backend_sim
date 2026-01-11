@@ -92,6 +92,7 @@ def init_analyzer(base_dir):
     
     if os.path.exists(model_path) and os.path.exists(token_path):
         analyzer = SentimentAnalyzer(model_path, token_path)
+        print(f"🔍 DEBUG: analyzer after assignment = {analyzer}, model = {analyzer.model if analyzer else 'N/A'}")
     else:
         print("⚠️ Sentiment assets not found. Skipper loading.")
 
