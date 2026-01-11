@@ -1,9 +1,18 @@
 import os
 import pickle
 import numpy as np
+os.environ["TF_USE_LEGACY_KERAS"] = "1"
 import tensorflow as tf
 from tensorflow.keras.preprocessing.sequence import pad_sequences
-from tensorflow.keras.models import load_model
+
+# Ubah import load_model ke tf_keras (legacy) untuk fix error batch_shape
+try:
+    import tf_keras
+    from tf_keras.models import load_model
+    print("ℹ️ Using tf_keras for legacy model loading")
+except ImportError:
+    print("⚠️ tf-keras not found, falling back to tensorflow.keras (might fail with legacy models)")
+    from tensorflow.keras.models import load_model
 
 class SentimentAnalyzer:
     def __init__(self, model_path, tokenizer_path):
