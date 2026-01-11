@@ -437,7 +437,19 @@ def get_dashboard_stats():
         }
     })
 
-# ... (existing growth stats)
+@app.route('/api/dashboard/growth', methods=['GET'])
+def get_growth_stats():
+    """Mengembalikan data timestamp untuk grafik pertumbuhan"""
+    users = db.session.query(User.created_at).all()
+    posts = db.session.query(Post.created_at).all()
+    
+    user_dates = [u.created_at.isoformat() for u in users if u.created_at]
+    post_dates = [p.created_at.isoformat() for p in posts if p.created_at]
+    
+    return jsonify({
+        'users': user_dates,
+        'posts': post_dates
+    })
 
 def check_and_migrate_db():
     """Cek dan update schema database jika diperlukan"""
@@ -469,7 +481,91 @@ def check_and_migrate_db():
                 except Exception as e:
                     print(f"❌ Migration failed: {e}")
 
-# ... (existing user endpoints)
+@app.route('/api/users', methods=['GET'])
+def get_all_users():
+    """Daftar semua user untuk admin"""
+    users = User.query.all()
+    return jsonify([u.to_dict() for u in users])
+
+@app.route('/api/admin/users', methods=['POST'])
+@token_required
+def admin_create_user(current_user):
+    """Admin dapat membuat akun user baru"""
+    if current_user.role != UserRole.ADMIN:
+        return jsonify({'error': 'Akses ditolak. Hanya admin yang bisa membuat user.'}), 403
+    
+    data = request.json
+    if not all(k in data for k in ('username', 'email', 'password', 'full_name')):
+        return jsonify({'error': 'Data tidak lengkap.'}), 400
+    
+    if User.query.filter((User.username == data['username']) | (User.email == data['email'])).first():
+        return jsonify({'error': 'Username atau Email sudah terpakai'}), 400
+    
+    user = User(
+        username=data['username'],
+        email=data['email'],
+        full_name=data['full_name'],
+        phone=data.get('phone', ''),
+        bio=data.get('bio', 'Dibuat oleh Admin'),
+        points=int(data.get('points', 0))
+    )
+    user.set_password(data['password'])
+    
+    if data.get('role') == 'admin':
+        user.role = UserRole.ADMIN
+    else:
+        user.role = UserRole.USER
+    
+    db.session.add(user)
+    db.session.commit()
+    
+    return jsonify({'message': 'User berhasil dibuat', 'user': user.to_dict()}), 201
+
+@app.route('/api/posts/<int:post_id>', methods=['DELETE'])
+@token_required
+def delete_post(current_user, post_id):
+    post = Post.query.get_or_404(post_id)
+    if current_user.role != UserRole.ADMIN and current_user.id != post.user_id:
+        return jsonify({'error': 'Akses ditolak'}), 403
+    
+    PostVerification.query.filter_by(post_id=post_id).delete()
+    import os
+    image_path = os.path.join(app.config['UPLOAD_FOLDER'], post.image_path)
+    if os.path.exists(image_path):
+        os.remove(image_path)
+    
+    db.session.delete(post)
+    db.session.commit()
+    return jsonify({'message': 'Laporan berhasil dihapus'})
+
+@app.route('/api/admin/users/<int:user_id>', methods=['PUT'])
+@token_required
+def admin_update_user(current_user, user_id):
+    if current_user.role != UserRole.ADMIN:
+        return jsonify({'error': 'Akses ditolak'}), 403
+    
+    user = User.query.get_or_404(user_id)
+    data = request.json
+    
+    if 'full_name' in data: user.full_name = data['full_name']
+    if 'email' in data:
+        existing = User.query.filter(User.email == data['email'], User.id != user_id).first()
+        if existing: return jsonify({'error': 'Email sudah digunakan'}), 400
+        user.email = data['email']
+    if 'username' in data:
+        existing = User.query.filter(User.username == data['username'], User.id != user_id).first()
+        if existing: return jsonify({'error': 'Username sudah digunakan'}), 400
+        user.username = data['username']
+    if 'phone' in data: user.phone = data['phone']
+    if 'bio' in data: user.bio = data['bio']
+    if 'role' in data:
+        user.role = UserRole.ADMIN if data['role'] == 'admin' else UserRole.USER
+    if 'password' in data and data['password']:
+        user.set_password(data['password'])
+    if 'points' in data: user.points = int(data['points'])
+    
+    db.session.commit()
+    return jsonify({'message': 'User berhasil diperbarui', 'user': user.to_dict()})
 
 # =========================
 # REVIEWS
@@ -500,7 +596,21 @@ def create_review(current_user):
 
     return jsonify({'message': 'Review berhasil dikirim', 'data': review.to_dict()}), 201
 
-# ... (existing reviews methods)
+@app.route('/api/reviews', methods=['GET'])
+def get_reviews():
+    reviews = Review.query.order_by(Review.created_at.desc()).all()
+    return jsonify([r.to_dict() for r in reviews])
+
+@app.route('/api/reviews/<int:review_id>', methods=['DELETE'])
+@token_required
+def delete_review(current_user, review_id):
+    if current_user.role != UserRole.ADMIN:
+        return jsonify({'error': 'Akses ditolak'}), 403
+
+    review = Review.query.get_or_404(review_id)
+    db.session.delete(review)
+    db.session.commit()
+    return jsonify({'message': 'Review berhasil dihapus'})
 
 # =========================
 # RUN
