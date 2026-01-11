@@ -9,11 +9,19 @@ import os
 # Set working directory to this file's directory
 basedir = os.path.abspath(os.path.dirname(__file__))
 
+print(f"📂 Base Dir: {basedir}")
+model_check = os.path.join(basedir, 'sentiment_assets', 'bilstm_model.keras')
+print(f"🧐 Checking Model Path: {model_check} -> Exists? {os.path.exists(model_check)}")
+
 print("⏳ Initializing Sentiment Analyzer...")
 init_analyzer(basedir)
 
-if not analyzer or not analyzer.model:
-    print("❌ FATAL: Analyzer Failed to Load. Aborting.")
+if not analyzer:
+    print("❌ FATAL: Analyzer is None (Init failed). Assets missing?")
+    exit(1)
+
+if not analyzer.model:
+    print("❌ FATAL: Analyzer created but Model is None (Load failed). Check logs above.")
     exit(1)
 
 print(f"✅ Analyzer Status: Loaded. Model: {analyzer.model}")
