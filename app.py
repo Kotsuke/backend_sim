@@ -312,7 +312,9 @@ def delete_user(current_user, user_id):
     Post.query.filter_by(user_id=user_id).delete()
     Review.query.filter_by(user_id=user_id).delete() # Tambahan cleanup review
     
-    db.session.delete(current_user)
+    # CRITICAL FIX: Hapus user yang TEPAT (sesuai user_id), BUKAN current_user (admin)
+    user_to_delete = User.query.get_or_404(user_id)
+    db.session.delete(user_to_delete)
     db.session.commit()
 
     return jsonify({'message': 'Akun dihapus'})
