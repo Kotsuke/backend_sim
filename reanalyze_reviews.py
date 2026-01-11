@@ -1,9 +1,6 @@
 from app import app, db
 from models import Review
-from sentiment_service import init_analyzer, predict_sentiment
-import os
-
-from sentiment_service import init_analyzer, predict_sentiment, analyzer # Import variable analyzer juga
+import sentiment_service  # Import module, bukan variable langsung
 import os
 
 # Set working directory to this file's directory
@@ -14,17 +11,18 @@ model_check = os.path.join(basedir, 'sentiment_assets', 'bilstm_model.keras')
 print(f"🧐 Checking Model Path: {model_check} -> Exists? {os.path.exists(model_check)}")
 
 print("⏳ Initializing Sentiment Analyzer...")
-init_analyzer(basedir)
+sentiment_service.init_analyzer(basedir)
 
-if not analyzer:
+# Akses analyzer via module (bukan import langsung) agar dapat nilai terbaru
+if not sentiment_service.analyzer:
     print("❌ FATAL: Analyzer is None (Init failed). Assets missing?")
     exit(1)
 
-if not analyzer.model:
+if not sentiment_service.analyzer.model:
     print("❌ FATAL: Analyzer created but Model is None (Load failed). Check logs above.")
     exit(1)
 
-print(f"✅ Analyzer Status: Loaded. Model: {analyzer.model}")
+print(f"✅ Analyzer Status: Loaded. Model: {sentiment_service.analyzer.model}")
 
 with app.app_context():
     print("🔍 Fetching reviews...")
@@ -37,7 +35,7 @@ with app.app_context():
         if r.comment:
             old_sentiment = r.sentiment
             try:
-                new_sentiment = predict_sentiment(r.comment)
+                new_sentiment = sentiment_service.predict_sentiment(r.comment)
                 
                 if new_sentiment:
                     r.sentiment = new_sentiment
