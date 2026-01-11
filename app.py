@@ -568,6 +568,29 @@ def admin_update_user(current_user, user_id):
     return jsonify({'message': 'User berhasil diperbarui', 'user': user.to_dict()})
 
 # =========================
+# CHATBOT ROUTE
+# =========================
+@app.route('/api/chat', methods=['POST'])
+@token_required
+def chat_with_bot(current_user):
+    if not chatbot:
+        return jsonify({'error': 'Chatbot sedang tidak aktif (Model belum dimuat)'}), 503
+
+    data = request.json
+    question = data.get('message')
+
+    if not question:
+        return jsonify({'error': 'Pesan (message) wajib diisi'}), 400
+
+    try:
+        # Panggil fungsi chat dari SIMChatbot
+        answer = chatbot.chat(question)
+        return jsonify({'answer': answer})
+    except Exception as e:
+        print(f"Chat Error: {e}")
+        return jsonify({'error': 'Terjadi kesalahan pada chatbot'}), 500
+
+# =========================
 # REVIEWS
 # =========================
 @app.route('/api/reviews', methods=['POST'])
