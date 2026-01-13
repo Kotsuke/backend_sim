@@ -12,7 +12,7 @@ from flask_cors import CORS
 from inference_sdk import InferenceHTTPClient
 
 from config import Config
-from models import db, Post, PostVerification, User, UserRole, VerificationType, Review
+from models import db, Post, PostVerification, User, UserRole, VerificationType, Review, PostStatus
 import sys
 
 # =========================
@@ -325,6 +325,10 @@ def delete_user(current_user, user_id):
 @app.route('/api/upload', methods=['POST'])
 @token_required
 def upload_post(current_user):
+    # Validasi NIK - User harus memiliki NIK untuk bisa upload
+    if current_user.nik is None:
+        return jsonify({'error': 'Anda harus memasukkan NIK terlebih dahulu untuk menggunakan fitur ini'}), 403
+    
     if 'image' not in request.files:
         return jsonify({'error': 'Wajib upload gambar'}), 400
 
@@ -487,8 +491,18 @@ def check_and_migrate_db():
                 print("✅ Migration: Added 'created_at' to 'users'")
             except Exception as e:
                 print(f"❌ Migration failed: {e}")
+        
+        # 2. Cek users.nik
+        if 'nik' not in user_cols:
+            print("⚠️ Column 'nik' missing in 'users', migrating...")
+            try:
+                db.session.execute(text("ALTER TABLE users ADD COLUMN nik BIGINT UNIQUE"))
+                db.session.commit()
+                print("✅ Migration: Added 'nik' to 'users'")
+            except Exception as e:
+                print(f"❌ Migration failed: {e}")
 
-        # 2. Cek reviews.sentiment
+        # 3. Cek reviews.sentiment
         if 'reviews' in inspector.get_table_names():
             review_cols = [c['name'] for c in inspector.get_columns('reviews')]
             if 'sentiment' not in review_cols:
@@ -497,6 +511,18 @@ def check_and_migrate_db():
                     db.session.execute(text("ALTER TABLE reviews ADD COLUMN sentiment VARCHAR(20)"))
                     db.session.commit()
                     print("✅ Migration: Added 'sentiment' to 'reviews'")
+                except Exception as e:
+                    print(f"❌ Migration failed: {e}")
+        
+        # 4. Cek posts.status
+        if 'posts' in inspector.get_table_names():
+            post_cols = [c['name'] for c in inspector.get_columns('posts')]
+            if 'status' not in post_cols:
+                print("⚠️ Column 'status' missing in 'posts', migrating...")
+                try:
+                    db.session.execute(text("ALTER TABLE posts ADD COLUMN status VARCHAR(20) DEFAULT 'waiting'"))
+                    db.session.commit()
+                    print("✅ Migration: Added 'status' to 'posts'")
                 except Exception as e:
                     print(f"❌ Migration failed: {e}")
 
@@ -520,18 +546,28 @@ def admin_create_user(current_user):
     if User.query.filter((User.username == data['username']) | (User.email == data['email'])).first():
         return jsonify({'error': 'Username atau Email sudah terpakai'}), 400
     
+    # Cek NIK jika disediakan
+    nik = data.get('nik')
+    if nik is not None:
+        existing_nik = User.query.filter(User.nik == int(nik)).first()
+        if existing_nik:
+            return jsonify({'error': 'NIK sudah digunakan oleh user lain'}), 400
+    
     user = User(
         username=data['username'],
         email=data['email'],
         full_name=data['full_name'],
         phone=data.get('phone', ''),
         bio=data.get('bio', 'Dibuat oleh Admin'),
-        points=int(data.get('points', 0))
+        points=int(data.get('points', 0)),
+        nik=int(nik) if nik else None
     )
     user.set_password(data['password'])
     
     if data.get('role') == 'admin':
         user.role = UserRole.ADMIN
+    elif data.get('role') == 'moderator':
+        user.role = UserRole.MODERATOR
     else:
         user.role = UserRole.USER
     
@@ -578,13 +614,100 @@ def admin_update_user(current_user, user_id):
     if 'phone' in data: user.phone = data['phone']
     if 'bio' in data: user.bio = data['bio']
     if 'role' in data:
-        user.role = UserRole.ADMIN if data['role'] == 'admin' else UserRole.USER
+        if data['role'] == 'admin':
+            user.role = UserRole.ADMIN
+        elif data['role'] == 'moderator':
+            user.role = UserRole.MODERATOR
+        else:
+            user.role = UserRole.USER
     if 'password' in data and data['password']:
         user.set_password(data['password'])
     if 'points' in data: user.points = int(data['points'])
+    if 'nik' in data:
+        if data['nik'] is not None:
+            # Cek apakah NIK sudah digunakan user lain
+            existing_nik = User.query.filter(User.nik == data['nik'], User.id != user_id).first()
+            if existing_nik:
+                return jsonify({'error': 'NIK sudah digunakan oleh user lain'}), 400
+            user.nik = int(data['nik'])
+        else:
+            user.nik = None
     
     db.session.commit()
     return jsonify({'message': 'User berhasil diperbarui', 'user': user.to_dict()})
+
+# =========================
+# USER UPDATE NIK
+# =========================
+@app.route('/api/users/<int:user_id>/nik', methods=['PUT'])
+@token_required
+def update_user_nik(current_user, user_id):
+    """User dapat mengupdate NIK mereka sendiri"""
+    if current_user.id != user_id:
+        return jsonify({'error': 'Anda hanya dapat mengupdate NIK akun sendiri'}), 403
+    
+    data = request.json
+    nik = data.get('nik')
+    
+    if nik is None:
+        return jsonify({'error': 'NIK wajib diisi'}), 400
+    
+    try:
+        nik = int(nik)
+    except (ValueError, TypeError):
+        return jsonify({'error': 'NIK harus berupa angka'}), 400
+    
+    # Validasi panjang NIK (16 digit untuk Indonesia)
+    if len(str(nik)) != 16:
+        return jsonify({'error': 'NIK harus 16 digit'}), 400
+    
+    # Cek apakah NIK sudah digunakan user lain
+    existing_nik = User.query.filter(User.nik == nik, User.id != user_id).first()
+    if existing_nik:
+        return jsonify({'error': 'NIK sudah digunakan oleh akun lain'}), 400
+    
+    current_user.nik = nik
+    db.session.commit()
+    
+    return jsonify({'message': 'NIK berhasil diperbarui', 'user': current_user.to_dict()})
+
+# =========================
+# MODERATOR UPDATE POST STATUS
+# =========================
+@app.route('/api/posts/<int:post_id>/status', methods=['PUT'])
+@token_required
+def update_post_status(current_user, post_id):
+    """Moderator atau Admin dapat mengubah status post"""
+    # Cek apakah user adalah moderator atau admin
+    if current_user.role not in [UserRole.MODERATOR, UserRole.ADMIN]:
+        return jsonify({'error': 'Akses ditolak. Hanya moderator atau admin yang dapat mengubah status.'}), 403
+    
+    post = Post.query.get_or_404(post_id)
+    data = request.json
+    new_status = data.get('status')
+    
+    if not new_status:
+        return jsonify({'error': 'Status wajib diisi'}), 400
+    
+    # Validasi status yang valid
+    valid_statuses = ['waiting', 'processing', 'finished']
+    if new_status.lower() not in valid_statuses:
+        return jsonify({'error': f'Status tidak valid. Gunakan salah satu dari: {valid_statuses}'}), 400
+    
+    # Set status baru
+    if new_status.lower() == 'waiting':
+        post.status = PostStatus.WAITING
+    elif new_status.lower() == 'processing':
+        post.status = PostStatus.PROCESSING
+    elif new_status.lower() == 'finished':
+        post.status = PostStatus.FINISHED
+    
+    db.session.commit()
+    
+    return jsonify({
+        'message': f'Status post berhasil diubah menjadi {new_status}',
+        'data': post.to_dict()
+    })
 
 ## =========================
 # CHATBOT ROUTE
@@ -615,6 +738,10 @@ def chat_with_bot(current_user):
 @app.route('/api/reviews', methods=['POST'])
 @token_required
 def create_review(current_user):
+    # Validasi NIK - User harus memiliki NIK untuk bisa submit review
+    if current_user.nik is None:
+        return jsonify({'error': 'Anda harus memasukkan NIK terlebih dahulu untuk menggunakan fitur ini'}), 403
+    
     data = request.json
     rating = data.get('rating')
     comment = data.get('comment')

@@ -14,7 +14,14 @@ db = SQLAlchemy()
 # 1. Role User
 class UserRole(enum.Enum):
     USER = 'user'
+    MODERATOR = 'moderator'
     ADMIN = 'admin'
+
+# 2. Status Post
+class PostStatus(enum.Enum):
+    WAITING = 'waiting'
+    PROCESSING = 'processing'
+    FINISHED = 'finished'
 
 # --- MODEL REVIEW ---
 class Review(db.Model):
@@ -65,6 +72,9 @@ class User(db.Model):
 
     role = db.Column(Enum(UserRole), default=UserRole.USER, nullable=False)
     
+    # NIK untuk validasi akun (diperlukan untuk upload dan beberapa fitur)
+    nik = db.Column(db.BigInteger, nullable=True, unique=True)
+    
     # Cascade delete: Jika user dihapus, post & verifikasi & review ikut terhapus
     posts = db.relationship('Post', backref='author', lazy=True, cascade="all, delete-orphan")
     verifications = db.relationship('PostVerification', backref='user', lazy=True, cascade="all, delete-orphan")
@@ -88,7 +98,8 @@ class User(db.Model):
             'role': self.role.value,
             'phone': self.phone if self.phone else "",
             'bio': self.bio if self.bio else "",
-            'points': self.points
+            'points': self.points,
+            'nik': self.nik
         }
 
 # --- MODEL POSTINGAN ---
@@ -110,6 +121,9 @@ class Post(db.Model):
     pothole_count = db.Column(db.Integer, default=0)
     severity = db.Column(db.Enum('SERIUS', 'TIDAK_SERIUS'), nullable=False)
     caption = db.Column(db.Text)
+    
+    # Status Post (untuk workflow moderator)
+    status = db.Column(Enum(PostStatus), default=PostStatus.WAITING, nullable=False)
     
     # --- Polling Count (Ini penentu statusnya nanti di Frontend) ---
     confirm_count = db.Column(db.Integer, default=0) 
@@ -137,6 +151,7 @@ class Post(db.Model):
             'severity': self.severity,
             'pothole_count': self.pothole_count,
             'caption': self.caption,
+            'status': self.status.value,
             'verification': {
                 'valid': self.confirm_count,
                 'false': self.false_count
