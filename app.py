@@ -385,6 +385,10 @@ def get_posts():
 @app.route('/api/posts/<int:post_id>/verify', methods=['POST'])
 @token_required
 def verify_post(current_user, post_id):
+    # Validasi NIK - User harus memiliki NIK untuk bisa memberikan vote
+    if current_user.nik is None:
+        return jsonify({'error': 'Anda harus memasukkan NIK terlebih dahulu untuk menggunakan fitur ini'}), 403
+    
     post = Post.query.get_or_404(post_id)
     vtype = request.json.get('type')
 
