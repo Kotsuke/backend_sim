@@ -9,7 +9,7 @@ class SentimentAnalyzer:
     def __init__(self, model_path):
         self.model = None
         self.model_path = model_path
-        self.classes = ['negatif', 'positif']  # Mapping index ke label
+        self.classes = None  # Akan di-detect dari model
 
         self._load_model()
 
@@ -23,9 +23,65 @@ class SentimentAnalyzer:
             # Debug: Print model info
             print(f"ℹ️ Model type: {type(self.model)}")
             
+            # =============================================
+            # AUTO-DETECT CLASS MAPPING DARI MODEL
+            # =============================================
+            # Scikit-learn menyimpan label classes di atribut 'classes_'
+            # Ini penting agar urutan mapping sesuai dengan saat training!
+            
+            self._detect_classes()
+            
         except Exception as e:
             print(f"❌ Failed to load Sentiment Analyzer: {e}")
             self.model = None
+
+    def _detect_classes(self):
+        """
+        Mendeteksi urutan class dari model.
+        Scikit-learn classifier menyimpan di model.classes_
+        Pipeline menyimpan di step terakhir (classifier).
+        """
+        if not self.model:
+            return
+            
+        classes_found = None
+        
+        # Cek 1: Model langsung punya classes_
+        if hasattr(self.model, 'classes_'):
+            classes_found = self.model.classes_
+            print(f"✅ Classes detected from model.classes_: {classes_found}")
+        
+        # Cek 2: Model adalah Pipeline, cek step terakhir
+        elif hasattr(self.model, 'named_steps'):
+            # Pipeline object
+            for step_name in reversed(list(self.model.named_steps.keys())):
+                step = self.model.named_steps[step_name]
+                if hasattr(step, 'classes_'):
+                    classes_found = step.classes_
+                    print(f"✅ Classes detected from pipeline step '{step_name}': {classes_found}")
+                    break
+        
+        # Cek 3: Model adalah Pipeline (list of tuples)
+        elif hasattr(self.model, 'steps'):
+            for step_name, step in reversed(self.model.steps):
+                if hasattr(step, 'classes_'):
+                    classes_found = step.classes_
+                    print(f"✅ Classes detected from pipeline step '{step_name}': {classes_found}")
+                    break
+        
+        # Set classes berdasarkan hasil deteksi
+        if classes_found is not None:
+            # Convert ke list of strings (lowercase)
+            self.classes = [str(c).lower() for c in classes_found]
+            print(f"📋 Final class mapping: {self.classes}")
+            print(f"   Index 0 = '{self.classes[0]}'")
+            print(f"   Index 1 = '{self.classes[1]}'")
+        else:
+            # Fallback: Gunakan default (PERINGATAN!)
+            print("⚠️ WARNING: Could not detect classes from model!")
+            print("⚠️ Using default mapping: [0='negatif', 1='positif']")
+            print("⚠️ PASTIKAN ini sesuai dengan urutan saat training!")
+            self.classes = ['negatif', 'positif']
 
     def predict(self, text):
         """
@@ -54,17 +110,12 @@ class SentimentAnalyzer:
                 elif isinstance(pred[0], (int, float)):
                     # Model return index/number
                     idx = int(pred[0])
-                    if idx < len(self.classes):
+                    if self.classes and idx < len(self.classes):
                         return self.classes[idx]
                     else:
+                        # Ultimate fallback
                         return 'positif' if idx == 1 else 'negatif'
             
-            # Jika model punya method khusus
-            if hasattr(self.model, 'predict_proba'):
-                proba = self.model.predict_proba([text])
-                idx = proba[0].argmax()
-                return self.classes[idx] if idx < len(self.classes) else 'unknown'
-
             return None
 
         except Exception as e:
