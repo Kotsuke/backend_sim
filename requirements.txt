@@ -21,3 +21,4 @@ numpy>=1.21.0
 # AI Models
 ultralytics>=8.0.0      # YOLO untuk deteksi lubang jalan
 scikit-learn>=1.0.0     # Sentiment analysis
+joblib>=1.0.0           # Loading sklearn models

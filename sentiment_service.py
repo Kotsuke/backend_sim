@@ -1,6 +1,14 @@
 import os
 import pickle
 
+# Coba import joblib (lebih direkomendasikan untuk sklearn models)
+try:
+    import joblib
+    HAS_JOBLIB = True
+except ImportError:
+    HAS_JOBLIB = False
+    print("⚠️ joblib not installed. Will try pickle instead.")
+
 class SentimentAnalyzer:
     """
     Sentiment Analyzer menggunakan model scikit-learn (.pkl)
@@ -16,23 +24,55 @@ class SentimentAnalyzer:
     def _load_model(self):
         try:
             print(f"🔄 Loading Sentiment Model from {self.model_path}...")
-            with open(self.model_path, 'rb') as f:
-                self.model = pickle.load(f)
-            print("✅ Sentiment Analyzer Loaded Successfully")
             
-            # Debug: Print model info
-            print(f"ℹ️ Model type: {type(self.model)}")
+            # Coba load dengan joblib dulu (lebih reliable untuk sklearn)
+            if HAS_JOBLIB:
+                try:
+                    self.model = joblib.load(self.model_path)
+                    print("✅ Loaded with joblib")
+                except Exception as e:
+                    print(f"⚠️ joblib failed: {e}, trying pickle...")
+                    self._load_with_pickle()
+            else:
+                self._load_with_pickle()
             
-            # =============================================
-            # AUTO-DETECT CLASS MAPPING DARI MODEL
-            # =============================================
-            # Scikit-learn menyimpan label classes di atribut 'classes_'
-            # Ini penting agar urutan mapping sesuai dengan saat training!
-            
-            self._detect_classes()
+            if self.model:
+                print("✅ Sentiment Analyzer Loaded Successfully")
+                print(f"ℹ️ Model type: {type(self.model)}")
+                self._detect_classes()
             
         except Exception as e:
             print(f"❌ Failed to load Sentiment Analyzer: {e}")
+            self.model = None
+
+    def _load_with_pickle(self):
+        """Try loading with pickle using different protocols"""
+        # Try standard pickle
+        try:
+            with open(self.model_path, 'rb') as f:
+                self.model = pickle.load(f)
+            print("✅ Loaded with pickle")
+            return
+        except Exception as e:
+            print(f"⚠️ Standard pickle failed: {e}")
+        
+        # Try with different encoding
+        try:
+            with open(self.model_path, 'rb') as f:
+                self.model = pickle.load(f, encoding='latin1')
+            print("✅ Loaded with pickle (latin1 encoding)")
+            return
+        except Exception as e:
+            print(f"⚠️ Pickle with latin1 encoding failed: {e}")
+        
+        # Try with bytes encoding
+        try:
+            with open(self.model_path, 'rb') as f:
+                self.model = pickle.load(f, encoding='bytes')
+            print("✅ Loaded with pickle (bytes encoding)")
+            return
+        except Exception as e:
+            print(f"❌ All pickle methods failed: {e}")
             self.model = None
 
     def _detect_classes(self):
@@ -74,8 +114,9 @@ class SentimentAnalyzer:
             # Convert ke list of strings (lowercase)
             self.classes = [str(c).lower() for c in classes_found]
             print(f"📋 Final class mapping: {self.classes}")
-            print(f"   Index 0 = '{self.classes[0]}'")
-            print(f"   Index 1 = '{self.classes[1]}'")
+            if len(self.classes) >= 2:
+                print(f"   Index 0 = '{self.classes[0]}'")
+                print(f"   Index 1 = '{self.classes[1]}'")
         else:
             # Fallback: Gunakan default (PERINGATAN!)
             print("⚠️ WARNING: Could not detect classes from model!")
