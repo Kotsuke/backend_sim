@@ -24,7 +24,7 @@ db.init_app(mini_app)
 import sentiment_service
 
 print(f"📂 Base Dir: {basedir}")
-model_check = os.path.join(basedir, 'sentiment_assets', 'bilstm_model.keras')
+model_check = os.path.join(basedir, 'sentiment_model_sim.pkl')
 print(f"🧐 Checking Model Path: {model_check} -> Exists? {os.path.exists(model_check)}")
 
 print("⏳ Initializing Sentiment Analyzer...")

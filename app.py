@@ -1,19 +1,21 @@
 import os
+import sys
+import secrets
 import cv2
 import numpy as np
 import jwt
 
 from flask import Flask, request, jsonify, send_from_directory
 from werkzeug.utils import secure_filename
-from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from flask_cors import CORS
-from inference_sdk import InferenceHTTPClient
+from sqlalchemy import func
+from ultralytics import YOLO
 
 from config import Config
 from models import db, Post, PostVerification, User, UserRole, VerificationType, Review
-import sys
+from sentiment_service import init_analyzer, predict_sentiment
 
 # =========================
 # CHATBOT SETUP
@@ -43,18 +45,17 @@ app.config['SECRET_KEY'] = 'secret_key_skripsi_smartinfra'
 db.init_app(app)
 
 # =========================
-# ROBOFLOW CONFIG
+# YOLO LOCAL MODEL CONFIG
 # =========================
-ROBOFLOW_API_KEY = os.environ.get("ROBOFLOW_API_KEY")
-MODEL_ID = os.environ.get("ROBOFLOW_MODEL_ID", "pothole-detection-bqu6s-ztwh1/1")
+MODEL_PATH = os.path.join(os.path.dirname(__file__), 'best.pt')
 
-if not ROBOFLOW_API_KEY:
-    print("⚠️ ROBOFLOW_API_KEY not found in environment variables. Post detection might fail.")
-
-CLIENT = InferenceHTTPClient(
-    api_url="https://serverless.roboflow.com",
-    api_key=ROBOFLOW_API_KEY
-)
+yolo_model = None
+try:
+    yolo_model = YOLO(MODEL_PATH)
+    print(f"✅ YOLO model loaded successfully from: {MODEL_PATH}")
+except Exception as e:
+    print(f"⚠️ Failed to load YOLO model: {e}")
+    yolo_model = None
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
@@ -96,16 +97,30 @@ def token_required(f):
 # =========================
 # HELPER AI
 # =========================
-def analyze_severity(results, img_w, img_h):
-    # Ambil prediksi dari Roboflow
-    raw_preds = results.get('predictions', [])
+def analyze_severity(results, img_w, img_h, confidence_threshold=0.4):
+    """
+    Menganalisis hasil deteksi YOLO lokal untuk menentukan severity.
     
-    # 1. FILTER CONFIDENCE
-    # Hanya ambil prediksi yang confidence-nya > 40% (0.4)
-    # Ini membantu membuang deteksi "sampah" atau noise
-    preds = [p for p in raw_preds if p.get('confidence', 0) > 0.4]
+    Args:
+        results: Hasil dari YOLO model.predict()
+        img_w: Lebar gambar
+        img_h: Tinggi gambar
+        confidence_threshold: Threshold confidence minimum (default 0.4)
     
-    count = len(preds)
+    Returns:
+        tuple: (severity_status, pothole_count)
+    """
+    # Ambil boxes dari hasil YOLO
+    boxes = results[0].boxes if len(results) > 0 else []
+    
+    # Filter berdasarkan confidence
+    filtered_boxes = []
+    for box in boxes:
+        conf = float(box.conf[0]) if len(box.conf) > 0 else 0
+        if conf > confidence_threshold:
+            filtered_boxes.append(box)
+    
+    count = len(filtered_boxes)
 
     if count == 0:
         return "AMAN", 0
@@ -113,19 +128,23 @@ def analyze_severity(results, img_w, img_h):
     serious = False
     img_area = img_w * img_h
 
-    for p in preds:
-        box = p.get('width', 0) * p.get('height', 0)
-        ratio = box / img_area
-        
-        # 2. LOGIKA UKURAN (AREA)
-        # Sebelumnya 0.02 (2%), sekarang dinaikkan ke 0.035 (3.5%)
-        # Agar jika user foto agak dekat, retakan kecil tidak langsung dianggap SERIUS
-        if ratio > 0.035:
-            serious = True
-            break
+    for box in filtered_boxes:
+        # YOLO format: xywh atau xyxy
+        # box.xywh memberikan [x_center, y_center, width, height]
+        if box.xywh is not None and len(box.xywh) > 0:
+            xywh = box.xywh[0]  # Ambil tensor pertama
+            box_width = float(xywh[2])
+            box_height = float(xywh[3])
+            box_area = box_width * box_height
+            ratio = box_area / img_area
+            
+            # LOGIKA UKURAN (AREA)
+            # Jika area box > 3.5% dari total gambar -> SERIUS
+            if ratio > 0.035:
+                serious = True
+                break
 
-    # 3. LOGIKA JUMLAH
-    # Sebelumnya > 3, sekarang > 4.
+    # LOGIKA JUMLAH
     # Jika ada lebih dari 4 lubang kecil-kecil -> SERIUS (Jalan Hancur)
     # ATAU jika ada 1 lubang besar (serious=True) -> SERIUS
     if count > 4 or serious:
@@ -228,7 +247,6 @@ def google_login():
             counter += 1
 
         # Buat user baru dengan password random (tidak akan digunakan karena login via Google)
-        import secrets
         random_password = secrets.token_hex(16)
 
         user = User(
@@ -332,6 +350,17 @@ def upload_post(current_user):
     lng = request.form.get('longitude')
     address = request.form.get('address', 'Tidak diketahui')
 
+    # Validasi koordinat
+    try:
+        lat = float(lat) if lat else None
+        lng = float(lng) if lng else None
+        if lat is None or lng is None:
+            return jsonify({'error': 'Koordinat latitude dan longitude wajib diisi'}), 400
+        if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
+            return jsonify({'error': 'Koordinat tidak valid'}), 400
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Format koordinat tidak valid'}), 400
+
     file = request.files['image']
     file_bytes = np.frombuffer(file.read(), np.uint8)
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
@@ -339,8 +368,13 @@ def upload_post(current_user):
     if img is None:
         return jsonify({'error': 'File tidak valid'}), 400
 
+    if yolo_model is None:
+        return jsonify({'error': 'Model AI tidak tersedia. Silakan hubungi administrator.'}), 503
+
     h, w, _ = img.shape
-    results = CLIENT.infer(img, model_id=MODEL_ID)
+    
+    # Jalankan inferensi menggunakan model YOLO lokal
+    results = yolo_model.predict(source=img, conf=0.4, verbose=False)
     severity, count = analyze_severity(results, w, h)
 
     if count == 0:
@@ -355,8 +389,8 @@ def upload_post(current_user):
     post = Post(
         user_id=current_user.id,
         image_path=filename,
-        latitude=float(lat),
-        longitude=float(lng),
+        latitude=lat,
+        longitude=lng,
         address=address,
         pothole_count=count,
         severity=severity,
@@ -421,14 +455,6 @@ def verify_post(current_user, post_id):
 # =========================
 # ADMIN ENDPOINTS
 # =========================
-# ... (imports)
-from sentiment_service import init_analyzer, predict_sentiment
-
-# ... (existing code)
-
-# =========================
-# ADMIN ENDPOINTS
-# =========================
 @app.route('/api/dashboard/stats', methods=['GET'])
 def get_dashboard_stats():
     """Statistik untuk dashboard admin"""
@@ -437,7 +463,6 @@ def get_dashboard_stats():
     serious_damage = Post.query.filter_by(severity='SERIUS').count()
     
     # Hitung ulasan rata-rata
-    from sqlalchemy import func
     avg_rating = db.session.query(func.avg(Review.rating)).scalar()
     avg_rating = round(avg_rating, 1) if avg_rating else 0.0
 
@@ -548,7 +573,6 @@ def delete_post(current_user, post_id):
         return jsonify({'error': 'Akses ditolak'}), 403
     
     PostVerification.query.filter_by(post_id=post_id).delete()
-    import os
     image_path = os.path.join(app.config['UPLOAD_FOLDER'], post.image_path)
     if os.path.exists(image_path):
         os.remove(image_path)
