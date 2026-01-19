@@ -7,7 +7,7 @@ import numpy as np
 from datetime import datetime
 from flask import Blueprint, request, jsonify, current_app
 from werkzeug.utils import secure_filename
-from models import db, Post, PostStatus, PostVerification, VerificationType
+from models import db, Post, PostVerification, VerificationType
 from utils.decorators import token_required
 from utils.ai_helper import analyze_severity
 
@@ -113,10 +113,11 @@ def get_posts():
     sort_type = request.args.get('sort', 'terbaru').lower()
     
     if sort_type == 'trending':
-        posts = Post.query.filter(Post.status != PostStatus.SELESAI)\
+        # Exclude posts yang sudah selesai
+        posts = Post.query.filter(Post.status != 'SELESAI')\
             .order_by((Post.confirm_count + Post.false_count).desc(), Post.created_at.desc()).all()
     elif sort_type == 'selesai':
-        posts = Post.query.filter_by(status=PostStatus.SELESAI)\
+        posts = Post.query.filter(Post.status == 'SELESAI')\
             .order_by(Post.created_at.desc()).all()
     else:
         posts = Post.query.order_by(Post.created_at.desc()).all()
@@ -189,11 +190,11 @@ def get_posts_by_status():
     if status_filter == 'all':
         posts = Post.query.order_by(Post.created_at.desc()).all()
     elif status_filter == 'menunggu':
-        posts = Post.query.filter_by(status=PostStatus.MENUNGGU).order_by(Post.created_at.desc()).all()
+        posts = Post.query.filter(Post.status == 'MENUNGGU').order_by(Post.created_at.desc()).all()
     elif status_filter == 'diproses':
-        posts = Post.query.filter_by(status=PostStatus.DIPROSES).order_by(Post.created_at.desc()).all()
+        posts = Post.query.filter(Post.status == 'DIPROSES').order_by(Post.created_at.desc()).all()
     elif status_filter == 'selesai':
-        posts = Post.query.filter_by(status=PostStatus.SELESAI).order_by(Post.created_at.desc()).all()
+        posts = Post.query.filter(Post.status == 'SELESAI').order_by(Post.created_at.desc()).all()
     else:
         return jsonify({'error': 'Status filter tidak valid'}), 400
     
@@ -288,20 +289,16 @@ def update_post_status(current_user, post_id):
     post = Post.query.get_or_404(post_id)
     data = request.json
     
-    new_status = data.get('status', '').lower()
+    new_status = data.get('status', '').upper()
     
-    valid_statuses = ['menunggu', 'diproses', 'selesai']
+    valid_statuses = ['MENUNGGU', 'DIPROSES', 'SELESAI']
     if new_status not in valid_statuses:
         return jsonify({
             'error': f'Status tidak valid. Pilihan: {valid_statuses}'
         }), 400
     
-    if new_status == 'menunggu':
-        post.status = PostStatus.MENUNGGU
-    elif new_status == 'diproses':
-        post.status = PostStatus.DIPROSES
-    elif new_status == 'selesai':
-        post.status = PostStatus.SELESAI
+    # Simpan status sebagai string uppercase
+    post.status = new_status
     
     db.session.commit()
     

@@ -127,8 +127,8 @@ class Post(db.Model):
     confirm_count = db.Column(db.Integer, default=0) 
     false_count = db.Column(db.Integer, default=0)   
     
-    # Status penanganan oleh petugas
-    status = db.Column(Enum(PostStatus), default=PostStatus.MENUNGGU, nullable=False)
+    # Status penanganan oleh petugas (disimpan sebagai uppercase untuk match dengan MySQL ENUM)
+    status = db.Column(db.String(20), default='MENUNGGU', nullable=False)
     
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now)
 
@@ -160,7 +160,7 @@ class Post(db.Model):
                 'valid': self.confirm_count,
                 'false': self.false_count
             },
-            'status': self.status.value if self.status else 'menunggu',
+            'status': self.status.upper() if self.status else 'MENUNGGU',
             'date': self.created_at.strftime('%Y-%m-%d %H:%M')
         }
 
