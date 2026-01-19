@@ -19,6 +19,11 @@ def get_dashboard_stats():
     total_users = User.query.count()
     serious_damage = Post.query.filter_by(severity='SERIUS').count()
     
+    # Hitung status breakdown
+    status_menunggu = Post.query.filter(Post.status == 'MENUNGGU').count()
+    status_diproses = Post.query.filter(Post.status == 'DIPROSES').count()
+    status_selesai = Post.query.filter(Post.status == 'SELESAI').count()
+    
     # Hitung ulasan rata-rata
     avg_rating = db.session.query(func.avg(Review.rating)).scalar()
     avg_rating = round(avg_rating, 1) if avg_rating else 0.0
@@ -32,6 +37,11 @@ def get_dashboard_stats():
         'total_users': total_users,
         'serious_damage': serious_damage,
         'average_rating': avg_rating,
+        'status_breakdown': {
+            'menunggu': status_menunggu,
+            'diproses': status_diproses,
+            'selesai': status_selesai
+        },
         'sentiment': {
             'positive': positive_reviews,
             'negative': negative_reviews
