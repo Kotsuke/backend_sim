@@ -45,7 +45,7 @@ from sentiment_service import init_analyzer, predict_sentiment
 # APP INIT
 # =========================
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}}, allow_headers=["Content-Type", "Authorization", "ngrok-skip-browser-warning", "X-Requested-With"])
 app.config.from_object(Config)
 app.config['SECRET_KEY'] = 'secret_key_skripsi_smartinfra'
 
