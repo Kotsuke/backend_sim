@@ -14,7 +14,14 @@ db = SQLAlchemy()
 # 1. Role User
 class UserRole(enum.Enum):
     USER = 'user'
+    PETUGAS = 'petugas'  # Petugas lapangan - bisa update status post
     ADMIN = 'admin'
+
+# 2. Status Penanganan Post
+class PostStatus(enum.Enum):
+    MENUNGGU = 'menunggu'    # Baru diupload, menunggu petugas
+    DIPROSES = 'diproses'    # Sedang ditangani petugas
+    SELESAI = 'selesai'      # Sudah diperbaiki
 
 # --- MODEL REVIEW ---
 class Review(db.Model):
@@ -41,7 +48,7 @@ class Review(db.Model):
             'created_at': self.created_at.strftime('%Y-%m-%d %H:%M')
         }
 
-# 2. Tipe Verifikasi Komunitas (PENGGANTI STATUS)
+# 3. Tipe Verifikasi Komunitas
 # User cuma bisa milih: "Valid nih!" atau "Enggak kok/Udah bener"
 class VerificationType(enum.Enum):
     CONFIRM = 'confirm' # Jempol Atas (Masih Rusak)
@@ -105,6 +112,11 @@ class Post(db.Model):
     latitude = db.Column(db.Numeric(10, 8), nullable=False)
     longitude = db.Column(db.Numeric(11, 8), nullable=False)
     address = db.Column(db.String(255), nullable=True)
+    
+    # Lokasi detail untuk filter/sort
+    province = db.Column(db.String(100), nullable=True)     # Provinsi (administrativeArea)
+    city = db.Column(db.String(100), nullable=True)         # Kota/Kabupaten (subAdministrativeArea)
+    district = db.Column(db.String(100), nullable=True)     # Kecamatan (locality)
 
     # Info Kerusakan
     pothole_count = db.Column(db.Integer, default=0)
@@ -114,6 +126,9 @@ class Post(db.Model):
     # --- Polling Count (Ini penentu statusnya nanti di Frontend) ---
     confirm_count = db.Column(db.Integer, default=0) 
     false_count = db.Column(db.Integer, default=0)   
+    
+    # Status penanganan oleh petugas
+    status = db.Column(Enum(PostStatus), default=PostStatus.MENUNGGU, nullable=False)
     
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now)
 
@@ -133,6 +148,10 @@ class Post(db.Model):
             'lat': float(self.latitude),
             'long': float(self.longitude),
             'address': self.address if self.address else "Lokasi tidak diketahui",
+            # Lokasi untuk filter
+            'province': self.province if self.province else "",
+            'city': self.city if self.city else "",
+            'district': self.district if self.district else "",
             # Kita kirim data polling biar Frontend yang nentuin warnanya
             'severity': self.severity,
             'pothole_count': self.pothole_count,
@@ -141,6 +160,7 @@ class Post(db.Model):
                 'valid': self.confirm_count,
                 'false': self.false_count
             },
+            'status': self.status.value if self.status else 'menunggu',
             'date': self.created_at.strftime('%Y-%m-%d %H:%M')
         }
 
