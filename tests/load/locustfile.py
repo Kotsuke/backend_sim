@@ -13,6 +13,7 @@ class SmartInfraUser(HttpUser):
     
     def on_start(self):
         """Called when a simulated user starts"""
+        self.client.headers.update({"ngrok-skip-browser-warning": "true"})
         # Register and login
         self.username = f"loadtest_user_{random.randint(1000, 9999)}"
         self.email = f"{self.username}@example.com"
@@ -37,6 +38,7 @@ class SmartInfraUser(HttpUser):
 
     def on_start(self):
         """Login as admin"""
+        self.client.headers.update({"ngrok-skip-browser-warning": "true"})
         # You need to create an admin user first
         response = self.client.post("/api/login", json={
             "username": "admin",
@@ -47,6 +49,7 @@ class SmartInfraUser(HttpUser):
 
     def on_start(self):
         """Login as petugas"""
+        self.client.headers.update({"ngrok-skip-browser-warning": "true"})
         response = self.client.post("/api/login", json={
             "username": "petugas",
             "password": "petugas123"
