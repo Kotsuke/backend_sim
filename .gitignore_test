@@ -1,0 +1,18 @@
+# Test Coverage
+htmlcov/
+.coverage
+coverage/
+*.coverage.*
+.pytest_cache/
+test_uploads/
+
+# Test Results
+.tox/
+.nox/
+junit/
+test-results/
+
+# Performance Test Results
+lighthouse-*.html
+lighthouse-*.json
+gtmetrix-*.json

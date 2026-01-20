@@ -1,5 +1,35 @@
-/venv/
-/uploads/
+# Virtual Environment
+venv/
+env/
 .env
+
+# Python & compiled files
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+
+# Distribution / Packaging
+dist/
+build/
+*.egg-info/
+
+# Testing & Coverage
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+.pytest_cache/
+test_uploads/
+
+# Flask
+instance/
+.webassets-cache
+
+# Logs
+*.log
+
+# Uploads (User generated)
+uploads/
+

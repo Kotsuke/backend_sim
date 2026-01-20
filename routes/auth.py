@@ -47,9 +47,15 @@ def register():
 @auth_bp.route('/api/login', methods=['POST'])
 def login():
     data = request.json
-    user = User.query.filter_by(username=data.get('username')).first()
+    username = data.get('username')
+    password = data.get('password')
+    
+    if not username or not password:
+        return jsonify({'error': 'Username dan password wajib diisi'}), 400
+        
+    user = User.query.filter_by(username=username).first()
 
-    if not user or not user.check_password(data.get('password')):
+    if not user or not user.check_password(password):
         return jsonify({'error': 'Username atau password salah'}), 401
 
     token = jwt.encode({
